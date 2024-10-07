@@ -10,15 +10,6 @@
 #define PRINTF_ON false
 #define CHECK_ARRAY false
 
-int qsort_float_cmp(const void *a, const void *b) {
-    float _a = *(float*)a;
-    float _b = *(float*)b;
-
-    if(_a < _b) return -1;
-    else if (_a == _b) return 0;
-    return 1;
-}
-
 inline void merge(float *local_data, float *recv_data, float *tmp,
            int local_data_size, int recv_data_size, int left_right) {
     int t_idx, l_idx, r_idx;
@@ -98,23 +89,25 @@ int main(int argc, char **argv) {
     char *input_filename = argv[2];
     char *output_filename = argv[3];
 
-    float *local_data = nullptr;
-    float *merged_data = nullptr;
-    
     int base = array_size / total_ranks;
     int remind = array_size % total_ranks;
     used_ranks = (base == 0) ? remind : total_ranks;
     
-    int *sendcounts = new int[total_ranks];
-    int *displs = new int[total_ranks];
+    int sendcounts[total_ranks];
+    int displs[total_ranks];
     for(int i = 0; i < total_ranks; i++) {
         sendcounts[i] = base + (i < remind ? 1 : 0);
         displs[i] = (i == 0) ? 0 : displs[i - 1] + sendcounts[i - 1];
     }
     int local_data_size = sendcounts[rank];
-    local_data = new float[local_data_size];
-    merged_data = new float[sendcounts[0] * 2];
+    float *local_data = new float[local_data_size];
+    float *merged_data = new float[sendcounts[0] * 2];
 
+    int max_recv_data_size = (rank > 0) ? sendcounts[rank - 1] : sendcounts[rank];
+    float *recv_data = new float[max_recv_data_size];
+    int partner, recv_data_size;
+    float recv_data_first, recv_data_last;
+    
     
     MPI_File input_file;
     MPI_File_open(MPI_COMM_WORLD, input_filename, MPI_MODE_RDONLY, MPI_INFO_NULL, &input_file);
@@ -123,11 +116,6 @@ int main(int argc, char **argv) {
 
     boost::sort::spreadsort::spreadsort(local_data, local_data + local_data_size);
     
-    int max_recv_data_size = (rank > 0) ? sendcounts[rank - 1] : sendcounts[rank];
-    float *recv_data = new float[max_recv_data_size];
-    int partner, recv_data_size;
-    float recv_data_first, recv_data_last;
-
     bool sorted = false, all_sorted = false;
     while(!all_sorted)
     { 
@@ -210,8 +198,6 @@ int main(int argc, char **argv) {
     delete[] local_data;
     delete[] recv_data;
     delete[] merged_data;
-    delete[] sendcounts;
-    delete[] displs;
     MPI_Finalize();
     return 0;
 }

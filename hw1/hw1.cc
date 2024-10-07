@@ -3,7 +3,8 @@
 #include <string.h>
 #include <algorithm>
 // #include <mpi.h>
-#include "/opt/intel/oneapi/mpi/latest/include/mpi.h"
+#include "/opt/software/intel/oneapi/mpi/latest/include/mpi.h"
+// #include "/opt/intel/oneapi/mpi/latest/include/mpi.h"
 #include <boost/sort/spreadsort/spreadsort.hpp>
 #define LEFT -1
 #define RIGHT 1

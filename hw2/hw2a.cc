@@ -48,6 +48,44 @@ void write_png(const char* filename, int iters, int width, int height, const int
     fclose(fp);
 }
 
+typedef struct ThreadData {
+    int iters;
+    double left;
+    double right;
+    double lower;
+    double upper;
+    int width;
+    int height;
+    int* image;
+    int t;
+    int ncpus;
+} thread_data;
+
+void* mandelbrot_calc(void* arguments) {
+    thread_data *t_data = (thread_data*)arguments;
+
+    for (int j = t_data->t; j < t_data->height; j += t_data->ncpus) {
+        double y0 = j * ((t_data->upper - t_data->lower) / t_data->height) + t_data->lower;
+        for (int i = 0; i < t_data->width; ++i) {
+            double x0 = i * ((t_data->right - t_data->left) / t_data->width) + t_data->left;
+
+            int repeats = 0;
+            double x = 0;
+            double y = 0;
+            double length_squared = 0;
+            while (repeats < t_data->iters && length_squared < 4) {
+                double temp = x * x - y * y + x0;
+                y = 2 * x * y + y0;
+                x = temp;
+                length_squared = x * x + y * y;
+                ++repeats;
+            }
+            t_data->image[j * t_data->width + i] = repeats;
+        }
+    }
+    pthread_exit(NULL);
+}
+
 int main(int argc, char** argv) {
     /* detect how many CPUs are available */
     cpu_set_t cpu_set;
@@ -72,26 +110,47 @@ int main(int argc, char** argv) {
 
     /* mandelbrot set */
     pthread_t threads[ncpus];
-    
-    for (int j = 0; j < height; ++j) {
-        double y0 = j * ((upper - lower) / height) + lower;
-        for (int i = 0; i < width; ++i) {
-            double x0 = i * ((right - left) / width) + left;
-
-            int repeats = 0;
-            double x = 0;
-            double y = 0;
-            double length_squared = 0;
-            while (repeats < iters && length_squared < 4) {
-                double temp = x * x - y * y + x0;
-                y = 2 * x * y + y0;
-                x = temp;
-                length_squared = x * x + y * y;
-                ++repeats;
-            }
-            image[j * width + i] = repeats;
-        }
+    thread_data t_datas[ncpus];
+    int rc;
+    for(int t = 0; t < ncpus; t++) {
+        t_datas[t] = (thread_data){
+            .iters = iters,
+            .left = left,
+            .right = right,
+            .lower = lower,
+            .upper = upper,
+            .width = width,
+            .height = height,
+            .image = image,
+            .t = t,
+            .ncpus = ncpus
+        };
+        rc = pthread_create(&threads[t], NULL, mandelbrot_calc, (void*)&t_datas[t]);
     }
+
+    for(int t = 0; t < ncpus; t++) {
+        pthread_join(threads[t], NULL);
+    }
+    
+    // for (int j = 0; j < height; ++j) {
+    //     double y0 = j * ((upper - lower) / height) + lower;
+    //     for (int i = 0; i < width; ++i) {
+    //         double x0 = i * ((right - left) / width) + left;
+
+    //         int repeats = 0;
+    //         double x = 0;
+    //         double y = 0;
+    //         double length_squared = 0;
+    //         while (repeats < iters && length_squared < 4) {
+    //             double temp = x * x - y * y + x0;
+    //             y = 2 * x * y + y0;
+    //             x = temp;
+    //             length_squared = x * x + y * y;
+    //             ++repeats;
+    //         }
+    //         image[j * width + i] = repeats;
+    //     }
+    // }
 
     /* draw and cleanup */
     write_png(filename, iters, width, height, image);

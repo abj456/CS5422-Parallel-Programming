@@ -14,4 +14,4 @@ srun -N2 -n4 ./hw1 ${TEST_N} ./testcases/${TESTCASE}.in ./testcases/${TESTCASE}.
 # srun -N3 -n3 $HOME/hw1/sample/hw1 12345 $HOME/hw1/testcases/07.in $HOME/hw1/testcases/07.out
 # srun -N2 -n24 $HOME/hw1/sample/hw1 12347 $HOME/hw1/testcases/21.in $HOME/hw1/testcases/21.out
 # srun -N2 -n24 $HOME/hw1/sample/hw1 1000003 $HOME/hw1/testcases/28.in ./28.out
-hw1-floats ./${TESTCASE}.out /share/testcases/hw1/${TESTCASE}.out
+# hw1-floats ./${TESTCASE}.out /share/testcases/hw1/${TESTCASE}.out

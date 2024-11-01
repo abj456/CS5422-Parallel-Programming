@@ -1,0 +1,7 @@
+nsys_reports*
+sample
+testcases
+*.out
+debug.cc
+hw1/hw1
+hw1_nvtx

@@ -2,9 +2,12 @@
 #include <cstdlib>
 #include <string.h>
 #include <algorithm>
-// #include <mpi.h>
-#include "/opt/software/intel/oneapi/mpi/latest/include/mpi.h"
+#include <mpi.h>
+#include <nvtx3/nvToolsExt.h>
+// #include <nvtx3/nvToolsExt.h>
+// #include "/opt/software/intel/oneapi/mpi/latest/include/mpi.h"
 // #include "/opt/intel/oneapi/mpi/latest/include/mpi.h"
+// #include "/opt/nvidia/nsight-systems/2024.5.1/target-linux-x64/nvtx/include/nvtx3/nvToolsExt.h"
 #include <boost/sort/spreadsort/spreadsort.hpp>
 #define LEFT -1
 #define RIGHT 1
@@ -12,67 +15,58 @@
 #define CHECK_ARRAY false
 
 inline void merge(float *local_data, float *recv_data, float *tmp,
-           int local_data_size, int recv_data_size, int left_right) {
+           const int *local_data_size, const int *recv_data_size, const int left_right) {
+    nvtxRangePush("merge() computing");
     int t_idx, l_idx, r_idx;
+
     if(left_right == LEFT) {
         t_idx = 0, l_idx = 0, r_idx = 0;
-        while(l_idx < local_data_size && r_idx < recv_data_size){
-            if(local_data[l_idx] < recv_data[r_idx]) {
-                tmp[t_idx++] = local_data[l_idx++];
+        #pragma omp parallel loop
+        while(l_idx < *local_data_size && r_idx < *recv_data_size){
+            if(*(local_data + l_idx) < *(recv_data + r_idx)) {
+                // tmp[t_idx++] = local_data[l_idx++];
+                *(tmp + t_idx++) = *(local_data + l_idx++);
             }
             else {
-                tmp[t_idx++] = recv_data[r_idx++];
+                // tmp[t_idx++] = recv_data[r_idx++];
+                *(tmp + t_idx++) = *(recv_data + r_idx++);
             }
         }
-        while(t_idx < local_data_size && l_idx < local_data_size) {
-            tmp[t_idx++] = local_data[l_idx++];
+        while(t_idx < *local_data_size && l_idx < *local_data_size) {
+            // tmp[t_idx++] = local_data[l_idx++];
+            *(tmp + t_idx++) = *(local_data + l_idx++);
         }
-        while(t_idx < local_data_size && r_idx < recv_data_size) {
-            tmp[t_idx++] = recv_data[r_idx++];
+        while(t_idx < *local_data_size && r_idx < *recv_data_size) {
+            // tmp[t_idx++] = recv_data[r_idx++];
+            *(tmp + t_idx++) = *(recv_data + r_idx++);
         }
     }
     else if(left_right == RIGHT) {
-        l_idx = local_data_size - 1, r_idx = recv_data_size - 1, t_idx = l_idx;
+        l_idx = *local_data_size - 1, r_idx = *recv_data_size - 1, t_idx = l_idx;
         while(t_idx >= 0 && l_idx >= 0 && r_idx >= 0) {
-            if(local_data[l_idx] < recv_data[r_idx]) {
-                tmp[t_idx--] = recv_data[r_idx--];
+            if(*(local_data + l_idx) < *(recv_data + r_idx)) {
+                // tmp[t_idx--] = recv_data[r_idx--];
+                *(tmp + t_idx--) = *(recv_data + r_idx--);
             }
             else {
-                tmp[t_idx--] = local_data[l_idx--];
+                // tmp[t_idx--] = local_data[l_idx--];
+                *(tmp + t_idx--) = *(local_data + l_idx--);
             }
         }
         while(t_idx >= 0 && l_idx >= 0) {
-            tmp[t_idx--] = local_data[l_idx--];
+            // tmp[t_idx--] = local_data[l_idx--];
+            *(tmp + t_idx--) = *(local_data + l_idx--);
         }
         while(t_idx >= 0 && r_idx >= 0) {
-            tmp[t_idx--] = recv_data[r_idx--];
+            // tmp[t_idx--] = recv_data[r_idx--];
+            *(tmp + t_idx--) = *(recv_data + r_idx--);
         }
     }
-    memcpy(local_data, tmp, local_data_size * sizeof(float));
-    
-    // int t_idx = 0, l_idx = 0, r_idx = 0;
-    // while(l_idx < local_data_size && r_idx < recv_data_size){
-    //     if(local_data[l_idx] < recv_data[r_idx]) {
-    //         tmp[t_idx++] = local_data[l_idx++];
-    //     }
-    //     else {
-    //         tmp[t_idx++] = recv_data[r_idx++];
-    //     }
+    memcpy(local_data, tmp, (*local_data_size) * sizeof(float));
+    // for(int i = 0; i < local_data_size; ++i) {
+    //     local_data[i] = tmp[i];
     // }
-    // while(l_idx < local_data_size) {
-    //     tmp[t_idx++] = local_data[l_idx++];
-    // }
-    // while(r_idx < recv_data_size) {
-    //     tmp[t_idx++] = recv_data[r_idx++];
-    // }
-
-    // if(left_right == LEFT) {
-    //     memcpy(local_data, tmp, local_data_size * sizeof(float));
-    // }
-    // else if(left_right == RIGHT){
-    //     memcpy(local_data, tmp + recv_data_size, local_data_size * sizeof(float));
-    // }
-    
+    nvtxRangePop();
 }
 
 int main(int argc, char **argv) {
@@ -115,7 +109,9 @@ int main(int argc, char **argv) {
     MPI_File_read_at(input_file, sizeof(float) * displs[rank], local_data, local_data_size, MPI_FLOAT, MPI_STATUS_IGNORE);
     MPI_File_close(&input_file);
 
-    boost::sort::spreadsort::spreadsort(local_data, local_data + local_data_size);
+    nvtxRangePush("spreadsort() computing");
+    boost::sort::spreadsort::float_sort(local_data, local_data + local_data_size);
+    nvtxRangePop();
     
     bool sorted = false, all_sorted = false;
     while(!all_sorted)
@@ -136,7 +132,7 @@ int main(int argc, char **argv) {
                     MPI_Sendrecv(local_data, local_data_size, MPI_FLOAT, partner, 0, 
                              recv_data, recv_data_size, MPI_FLOAT, partner, 0, 
                              MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                    merge(local_data, recv_data, merged_data, local_data_size, recv_data_size, LEFT);
+                    merge(local_data, recv_data, merged_data, &local_data_size, &recv_data_size, LEFT);
                     sorted = false;
                 }
             }
@@ -151,7 +147,7 @@ int main(int argc, char **argv) {
                     MPI_Sendrecv(local_data, local_data_size, MPI_FLOAT, partner, 0,
                                 recv_data, recv_data_size, MPI_FLOAT, partner, 0, 
                                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                    merge(local_data, recv_data, merged_data, local_data_size, recv_data_size, RIGHT);
+                    merge(local_data, recv_data, merged_data, &local_data_size, &recv_data_size, RIGHT);
                     sorted = false;
                 }
             }
@@ -168,7 +164,7 @@ int main(int argc, char **argv) {
                              recv_data, recv_data_size, MPI_FLOAT, partner, 0, 
                              MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                 
-                    merge(local_data, recv_data, merged_data, local_data_size, recv_data_size, LEFT);
+                    merge(local_data, recv_data, merged_data, &local_data_size, &recv_data_size, LEFT);
                     sorted = false;
                 }
             }
@@ -183,7 +179,7 @@ int main(int argc, char **argv) {
                     MPI_Sendrecv(local_data, local_data_size, MPI_FLOAT, partner, 0,
                              recv_data, recv_data_size, MPI_FLOAT, partner, 0,
                              MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                    merge(local_data, recv_data, merged_data, local_data_size, recv_data_size, RIGHT);
+                    merge(local_data, recv_data, merged_data, &local_data_size, &recv_data_size, RIGHT);
                     sorted = false;
                 }
             }

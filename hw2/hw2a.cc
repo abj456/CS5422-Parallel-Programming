@@ -10,6 +10,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <nvtx3/nvToolsExt.h>
+// #include </opt/software/nsys-2024.5.1/target-linux-x64/nvtx/include/nvtx3/nvToolsExt.h>
+
 
 void write_png(const char* filename, int iters, int width, int height, const int* buffer) {
     FILE* fp = fopen(filename, "wb");
@@ -63,11 +66,17 @@ typedef struct ThreadData {
 
 void* mandelbrot_calc(void* arguments) {
     thread_data *t_data = (thread_data*)arguments;
+    char msg[40];
+    sprintf(msg, "mandelbrot_calc() thread %d computing", t_data->t);
+    nvtxRangePush(msg);
+    
+    double y0_base = ((t_data->upper - t_data->lower) / t_data->height);
+    double x0_base = ((t_data->right - t_data->left) / t_data->width);
 
     for (int j = t_data->t; j < t_data->height; j += t_data->ncpus) {
-        double y0 = j * ((t_data->upper - t_data->lower) / t_data->height) + t_data->lower;
+        double y0 = j * y0_base + t_data->lower;
         for (int i = 0; i < t_data->width; ++i) {
-            double x0 = i * ((t_data->right - t_data->left) / t_data->width) + t_data->left;
+            double x0 = i * x0_base + t_data->left;
 
             int repeats = 0;
             double x = 0;
@@ -83,10 +92,12 @@ void* mandelbrot_calc(void* arguments) {
             t_data->image[j * t_data->width + i] = repeats;
         }
     }
+    nvtxRangePop();
     pthread_exit(NULL);
 }
 
 int main(int argc, char** argv) {
+    nvtxRangePush("main start");
     /* detect how many CPUs are available */
     cpu_set_t cpu_set;
     sched_getaffinity(0, sizeof(cpu_set), &cpu_set);
@@ -131,12 +142,11 @@ int main(int argc, char** argv) {
     for(int t = 0; t < ncpus; t++) {
         pthread_join(threads[t], NULL);
     }
-    
+    nvtxRangePop();
     // for (int j = 0; j < height; ++j) {
     //     double y0 = j * ((upper - lower) / height) + lower;
     //     for (int i = 0; i < width; ++i) {
     //         double x0 = i * ((right - left) / width) + left;
-
     //         int repeats = 0;
     //         double x = 0;
     //         double y = 0;

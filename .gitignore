@@ -4,4 +4,7 @@ testcases
 *.out
 debug.cc
 hw1/hw1
-hw1_nvtx
+*_nvtx
+*.png
+hw2/hw2a
+hw2/hw2b

@@ -9,6 +9,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <mpi.h>
+#include <omp.h>
+// #include <nvtx3/nvToolsExt.h>
+// #include "/opt/software/intel/oneapi/mpi/latest/include/mpi.h"
+// #include "/usr/lib/gcc/x86_64-linux-gnu/12/include/omp.h"
+#include </opt/software/nsys-2024.5.1/target-linux-x64/nvtx/include/nvtx3/nvToolsExt.h>
+
 
 void write_png(const char* filename, int iters, int width, int height, const int* buffer) {
     FILE* fp = fopen(filename, "wb");
@@ -48,10 +55,12 @@ void write_png(const char* filename, int iters, int width, int height, const int
 }
 
 int main(int argc, char** argv) {
+    nvtxRangePush("main start");
     /* detect how many CPUs are available */
     cpu_set_t cpu_set;
     sched_getaffinity(0, sizeof(cpu_set), &cpu_set);
     printf("%d cpus available\n", CPU_COUNT(&cpu_set));
+    int ncpus = CPU_COUNT(&cpu_set);
 
     /* argument parsing */
     assert(argc == 9);
@@ -68,28 +77,56 @@ int main(int argc, char** argv) {
     int* image = (int*)malloc(width * height * sizeof(int));
     assert(image);
 
-    /* mandelbrot set */
-    for (int j = 0; j < height; ++j) {
-        double y0 = j * ((upper - lower) / height) + lower;
-        for (int i = 0; i < width; ++i) {
-            double x0 = i * ((right - left) / width) + left;
+    int rank, total_ranks;
+    MPI_Init(&argc, &argv);
+    MPI_Comm_size(MPI_COMM_WORLD, &total_ranks);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-            int repeats = 0;
-            double x = 0;
-            double y = 0;
-            double length_squared = 0;
-            while (repeats < iters && length_squared < 4) {
-                double temp = x * x - y * y + x0;
-                y = 2 * x * y + y0;
-                x = temp;
-                length_squared = x * x + y * y;
-                ++repeats;
+    int base = height / total_ranks;
+    int start_row = rank * base;
+    int end_row = (rank < total_ranks - 1) ? start_row + base : height;
+
+    /* mandelbrot set */
+    #pragma omp parallel
+    { 
+        nvtxRangePush("OpenMP Start");
+        #pragma omp for schedule(dynamic, ncpus)
+        for (int j = start_row; j < end_row; ++j) {
+            double y0 = j * ((upper - lower) / height) + lower;
+            for (int i = 0; i < width; ++i) {
+                double x0 = i * ((right - left) / width) + left;
+
+                int repeats = 0;
+                double x = 0;
+                double y = 0;
+                double length_squared = 0;
+                while (repeats < iters && length_squared < 4) {
+                    double temp = x * x - y * y + x0;
+                    y = 2 * x * y + y0;
+                    x = temp;
+                    length_squared = x * x + y * y;
+                    ++repeats;
+                }
+                image[j * width + i] = repeats;
             }
-            image[j * width + i] = repeats;
+        }
+        nvtxRangePop();
+    }
+    /* draw and cleanup */
+    if(rank != 0) {
+        MPI_Send(image + start_row * width, (end_row - start_row) * width, MPI_INT, 0, 0, MPI_COMM_WORLD);
+    }
+    else {
+        for(int r = 1; r < total_ranks; r++) {
+            int recv_start_row = r * base;
+            int recv_end_row = (r < total_ranks - 1) ? recv_start_row + base : height;
+            MPI_Recv(image + recv_start_row * width, (recv_end_row - recv_start_row) * width, MPI_INT, r, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         }
     }
+    nvtxRangePop();
 
-    /* draw and cleanup */
-    write_png(filename, iters, width, height, image);
+    if(rank == 0) write_png(filename, iters, width, height, image);
     free(image);
+    MPI_Finalize();
+    return 0;
 }

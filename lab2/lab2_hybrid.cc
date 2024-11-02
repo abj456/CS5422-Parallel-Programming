@@ -16,7 +16,7 @@ int main(int argc, char** argv) {
 	unsigned long long pixels = 0;
 	unsigned long long global_pixels = 0;
 
-	int i, mpi_rank, mpi_ranks;
+	int mpi_rank, mpi_ranks;
 	MPI_Status stat;
 	MPI_Init(&argc, &argv);
 

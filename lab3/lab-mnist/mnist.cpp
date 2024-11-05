@@ -45,7 +45,7 @@ void LinearLayer(float *A, float *B, float *C, float *D, int n, int k, int m) {
     #pragma acc data copyin(B[0: k*m])
     #pragma acc data copyin(C[0: m])
     #pragma acc data copyout(D[0: n*m])
-    #pragma acc parallel loop tile(32, 32)
+    #pragma acc parallel loop tile(8, 16)
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < m; j++) {
             float sum = C[j];

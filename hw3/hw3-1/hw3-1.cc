@@ -140,12 +140,12 @@ void cal(
                 // To calculate original index of elements in the block (b_i, b_j)
                 // For instance, original index of (0,0) in block (1,2) is (2,5) for V=6,B=2
                 int block_internal_start_x = b_i * B;
-                int block_internal_end_x = (b_i + 1) * B;
+                int block_internal_end_x = std::min((b_i + 1) * B, n);
                 int block_internal_start_y = b_j * B;
-                int block_internal_end_y = (b_j + 1) * B;
+                int block_internal_end_y = std::min((b_j + 1) * B, n);
 
-                if (block_internal_end_x > n) block_internal_end_x = n;
-                if (block_internal_end_y > n) block_internal_end_y = n;
+                // if (block_internal_end_x > n) block_internal_end_x = n;
+                // if (block_internal_end_y > n) block_internal_end_y = n;
 
                 for (int k = k_start; k < k_end; ++k) {
                     for (int i = block_internal_start_x; i < block_internal_end_x; ++i) {

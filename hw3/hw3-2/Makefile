@@ -3,8 +3,8 @@ CXX = g++
 NVCC = nvcc
 HIPCC = hipcc
 
-NVFLAGS = -std=c++11 -O3 -Xptxas="-v" -arch=sm_61 
-HIPCCFLAGS = -std=c++11 -O3 --offload-arch=gfx90a
+NVFLAGS = -std=c++11 -O3 -Xptxas="-v" -arch=sm_61 -Xcompiler -fopenmp -lgomp
+HIPCCFLAGS = -std=c++11 -O3 --offload-arch=gfx90a -Xcompiler -fopenmp -lgomp
 
 LDFLAGS = -lm
 EXES = hw3-2

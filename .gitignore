@@ -6,7 +6,11 @@ debug.cc
 hw1/hw1
 *_nvtx
 *.png
+
 hw2/hw2a
 hw2/hw2b
 lab4/sobel
+
 seq
+hw3/hw3-1/hw3-1
+hw3/hw3-2/hw3-2

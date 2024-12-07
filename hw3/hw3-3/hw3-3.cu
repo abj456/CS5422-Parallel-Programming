@@ -235,8 +235,8 @@ __global__ void cal_phase2(int n, int *Dist, int B, int Round) {
     Dist[vt_idx + HALF_BF * (n + 1)] = shared_vt[thread_i + HALF_BF][thread_j + HALF_BF];
 }
 
-__global__ void cal_phase3(int n, int *Dist, int Round) {
-    if(blockIdx.x == Round || blockIdx.y == Round) return; // skip pivot, pivot hz, pivot vt
+__global__ void cal_phase3(int n, int *Dist, int Round, int row_offset) {
+    if(blockIdx.x == Round || blockIdx.y + row_offset == Round) return; // skip pivot, pivot hz, pivot vt
 
     __shared__ int block[BF][BF];
     __shared__ int vt[BF][BF];
@@ -244,7 +244,7 @@ __global__ void cal_phase3(int n, int *Dist, int Round) {
 
     int thread_i = threadIdx.y;
     int thread_j = threadIdx.x;
-    int b_i = blockIdx.y;
+    int b_i = blockIdx.y + row_offset;
     int b_j = blockIdx.x;
 
     /* idx of block waiting to be computed */
@@ -311,38 +311,47 @@ __global__ void cal_phase3(int n, int *Dist, int Round) {
     Dist[block_idx + HALF_BF * (n + 1)] = block[thread_i + HALF_BF][thread_j + HALF_BF];
 }
 
-inline void block_FW(int n, int B, int *Dist) {
+inline void block_FW(int n, int B, int **Dist) {
+    
     // int round = ceil(n, B);
     int round = n / BF;
     dim3 threadsPerBlock(NUM_THREADS, NUM_THREADS);
-    dim3 blocksPerGrid(round, round);
     dim3 blocks(1, round);
+    // dim3 blocksPerGrid(round, round);
 
-    for(int r = 0; r < round; ++r) {
-        // printf("%d %d\n", r, round);
-        // fflush(stdout);
-        /* Phase 1*/
-        // cal<<<1, threadsPerBlock>>>(n, Dist, B, r, r, r, 1, 1);
-        cal_phase1<<<1, threadsPerBlock>>>(n, Dist, BF, r);
-        // Phase1<<<1, threadsPerBlock>>>(Dist, r, n);
+    #pragma omp parallel num_threads(2)
+    {
+        unsigned int cpu_tid = omp_get_thread_num();
+        unsigned int half_round = round / 2;
+        unsigned int row_offset = (cpu_tid) ? half_round : 0;
+        unsigned int div_row = (cpu_tid) ? (round - half_round) : half_round;
+        
+        cudaSetDevice(cpu_tid);
+        cudaMalloc(&Dist[cpu_tid], dist_size);
+        assert(Dist[cpu_tid] != nullptr);
+        cudaMemcpy(Dist[cpu_tid], Dist_host, dist_size, cudaMemcpyHostToDevice);
+        dim3 blocksPerGrid(round, div_row);
+        
+        for(int r = 0; r < round; ++r) {
+            if(r >= row_offset && r < row_offset + div_row) {
+                cudaMemcpy(Dist[!cpu_tid] + r * BF * n, Dist[cpu_tid] + r * BF * n, BF * n * sizeof(int), cudaMemcpyDeviceToDevice);
+            }
+            #pragma omp barrier
 
-        /* Phase 2*/
-        // cal<<<1, threadsPerBlock>>>(n, Dist, B, r, r, 0, r, 1);
-        // cal<<<1, threadsPerBlock>>>(n, Dist, B, r, r, r + 1, round - r - 1, 1);
-        // cal<<<1, threadsPerBlock>>>(n, Dist, B, r, 0, r, 1, r);
-        // cal<<<1, threadsPerBlock>>>(n, Dist, B, r, r + 1, r, 1, round - r - 1);
-        cal_phase2<<<round, threadsPerBlock>>>(n, Dist, BF, r);
-        // Phase2<<<blocks, threadsPerBlock>>>(Dist, r, n);
-
-        /* Phase 3*/
-        // cal<<<1, threadsPerBlock>>>(n, Dist, B, r, 0, 0, r, r);
-        // cal<<<1, threadsPerBlock>>>(n, Dist, B, r, 0, r + 1, round - r - 1, r);
-        // cal<<<1, threadsPerBlock>>>(n, Dist, B, r, r + 1, 0, r, round - r - 1);
-        // cal<<<1, threadsPerBlock>>>(n, Dist, B, r, r + 1, r + 1, round - r - 1, round - r - 1);
-        // nvtxRangePush("Phase3 start");
-        cal_phase3<<<blocksPerGrid, threadsPerBlock>>>(n, Dist, r);
-        // Phase3<<<blocksPerGrid, threadsPerBlock>>>(Dist, r, n);
-        // nvtxRangePop();
+            /* Phase 1*/
+            cal_phase1<<<1, threadsPerBlock>>>(n, Dist[cpu_tid], BF, r);
+            /* Phase 2*/
+            cal_phase2<<<round, threadsPerBlock>>>(n, Dist[cpu_tid], BF, r);
+            /* Phase 3*/
+            // nvtxRangePush("Phase3 start");
+            cal_phase3<<<blocksPerGrid, threadsPerBlock>>>(n, Dist[cpu_tid], r, row_offset);
+            // nvtxRangePop();
+        }
+        cudaMemcpy(Dist_host + row_offset * BF * n, Dist[cpu_tid] + (row_offset * BF * n), 
+                   div_row * BF * n * sizeof(int), cudaMemcpyDeviceToHost);
+        #pragma omp barrier
+        
+        cudaFree(Dist[cpu_tid]);
     }
 }
 
@@ -362,17 +371,14 @@ int main(int argc, char* argv[]) {
 
     cudaHostRegister(Dist_host, dist_size, cudaHostRegisterDefault);
 
-    int *Dist_dev;
-    cudaMalloc(&Dist_dev, dist_size);
-    cudaMemcpy(Dist_dev, Dist_host, dist_size, cudaMemcpyHostToDevice);
-    assert(Dist_dev != nullptr);
+    int *Dist_dev[2];
 
     // block_FW(B);
     block_FW(n, B, Dist_dev);
     
-    cudaMemcpy(Dist_host, Dist_dev, dist_size, cudaMemcpyDeviceToHost);
+    // cudaMemcpy(Dist_host, Dist_dev, dist_size, cudaMemcpyDeviceToHost);
     output(argv[2]);
     cudaFreeHost(Dist_host);
-    cudaFree(Dist_dev);
+    // cudaFree(Dist_dev);
     return 0;
 }

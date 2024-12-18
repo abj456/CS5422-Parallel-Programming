@@ -17,4 +17,5 @@ hw3/hw3-2/hw3-2
 
 *.txt
 hw4/diff*
-hw4/seq*
+hw4/seq-attention
+hw4/seq-flashattention

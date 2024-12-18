@@ -15,8 +15,8 @@
 void input(char *input_filename);
 void output(char *output_filename);
 void flash_attention(float *q, float *k, float *v, float *o);
-__global__ void gpu_flash_attn(float *l, float *m, int N, int d, 
-                               float *q, float *k, float *v, float *o, int j
+__global__ void gpu_flash_attn(float *l, float *m, int N, int d, int j,
+                               float *q, float *k, float *v, float *o
                             //    float *cuda_sij, float *cuda_mij, float *cuda_pij, float *cuda_lij, 
                             //    float *cuda_kj, float *cuda_vj
                                );
@@ -69,16 +69,16 @@ int main(int argc, char *argv[]) {
     }
     cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, DEV_NO);
-    printf("testcase: %s\n", argv[1]);
-    printf("maxThreasPerBlock = %d, sharedMemPerBlock = %d\n", prop.maxThreadsPerBlock, prop.sharedMemPerBlock);
-    printf("maxBlocksPerMultiProcessor = %d, totalGlobalMem = %llu\n", prop.maxBlocksPerMultiProcessor, prop.totalGlobalMem);
+    // printf("testcase: %s\n", argv[1]);
+    // printf("maxThreasPerBlock = %d, sharedMemPerBlock = %lu\n", prop.maxThreadsPerBlock, prop.sharedMemPerBlock);
+    // printf("maxBlocksPerMultiProcessor = %d, totalGlobalMem = %lu\n", prop.maxBlocksPerMultiProcessor, prop.totalGlobalMem);
 
 
     input(argv[1]);
     size_t QKVO_size = B * N * d * sizeof(float);
     // printf("size of malloc = %lu\n", sizeof(float) * (BlockFactor * d * 4 + BlockFactor * 4 + BlockFactor * BlockFactor * 2));
-    printf("size of GlobalMem = %lu\n", QKVO_size * 4);
-    printf("(B, N, d): (%d, %d, %d)\n", B, N, d);
+    // printf("size of GlobalMem = %lu\n", QKVO_size * 4);
+    // printf("(B, N, d): (%d, %d, %d)\n", B, N, d);
 
     cudaMalloc(&Q_gpu, QKVO_size);
     cudaMalloc(&K_gpu, QKVO_size);
@@ -97,8 +97,8 @@ int main(int argc, char *argv[]) {
     dim3 blocksPerGrid(1, tr);
     dim3 threadsPerBlock(bc, br);
     size_t sizeof_kj_vj_qi_oi = (bc * d * 2 + br * d * 2) * sizeof(float);
-    printf("size of kj_vj_qi_oi_oitmp = %lu\n", sizeof_kj_vj_qi_oi);
-    printf("size of static shared mem = %lu\n", sizeof(float) * (BR * 6 + BR * BC * 2));
+    // printf("size of kj_vj_qi_oi_oitmp = %lu\n", sizeof_kj_vj_qi_oi);
+    // printf("size of static shared mem = %lu\n", sizeof(float) * (BR * 6 + BR * BC * 2));
 
     double start, end;
     start = getTimeStamp();
@@ -109,11 +109,11 @@ int main(int argc, char *argv[]) {
         
         for(int j = 0; j < tc; ++j)
         gpu_flash_attn<<<blocksPerGrid, threadsPerBlock, sizeof_kj_vj_qi_oi>>>
-            (l, m, N, d, 
+            (l, m, N, d, j,
             Q_gpu + (i * N * d), 
             K_gpu + (i * N * d), 
             V_gpu + (i * N * d), 
-            O_gpu + (i * N * d), j
+            O_gpu + (i * N * d)
             );
         
         // flash_attention(
@@ -129,18 +129,12 @@ int main(int argc, char *argv[]) {
 
     cudaMemcpy(O, O_gpu, B * N * d * sizeof(float), cudaMemcpyDeviceToHost);
     
-    cudaError_t err = cudaGetLastError(); 
-    if ( err != cudaSuccess ) { 
-        printf("CUDA Error: %s\n", cudaGetErrorString(err));
-        return 0;
-    }
+    // cudaError_t err = cudaGetLastError(); 
+    // if ( err != cudaSuccess ) { 
+    //     printf("CUDA Error: %s\n", cudaGetErrorString(err));
+    //     return 0;
+    // }
 
-    // checkCPU_GPU(K, gpu_kj, 1, N, d, "kj");
-    // checkCPU_GPU(V, gpu_vj, 1, N, d, "vj");
-    // checkCPU_GPU(cpu_sij, gpu_sij, 1, br, bc, "sij");
-    // checkCPU_GPU(cpu_mij, gpu_mij, 1, 1, br, "mij");
-    // checkCPU_GPU(cpu_pij, gpu_pij, 1, br, bc, "pij");
-    // checkCPU_GPU(cpu_lij, gpu_lij, 1, 1, br, "lij");
     // checkCPU_GPU(O, O_tmp, B, N, d, "O");
 
     output(argv[2]);
@@ -190,7 +184,6 @@ void output(char *output_filename) {
     // free(O_tmp);
 
     fclose(file);
-    printf("output return\n");
 }
 
 void checkCPU_GPU(float *O_cpu, float *O_gpu, int _B, int _N, int _d, char *matrix_name) {
@@ -208,8 +201,8 @@ void checkCPU_GPU(float *O_cpu, float *O_gpu, int _B, int _N, int _d, char *matr
     return;
 }
 
-__global__ void gpu_flash_attn(float *l, float *m, int N, int d, 
-                               float *q, float *k, float *v, float *o, int j
+__global__ void gpu_flash_attn(float *l, float *m, int N, int d, int j,
+                               float *q, float *k, float *v, float *o
                                ) {
     extern __shared__ float s_mem[];
     float *kj = s_mem;
@@ -245,34 +238,34 @@ __global__ void gpu_flash_attn(float *l, float *m, int N, int d,
     mi[thd_i] = m[row];
     __syncthreads();
 
-    // gpu_QKDotAndScalar(sij, qi, kj, BR, BC, 1.0 / sqrt(double(d)), d);
+    /* gpu_QKDotAndScalar(sij, qi, kj, BR, BC, 1.0 / sqrt(double(d)), d) */
     sij[thd_i * BC + thd_j] = 0.0F;
     for(int idx = 0; idx < d; ++idx) {
         sij[thd_i * BC + thd_j] += qi[thd_i * d + idx] * kj[thd_j * d + idx];
     }
     float scalar = 1.0 / sqrt(double(d));
     sij[thd_i * BC + thd_j] *= scalar;
-    __syncthreads();
+    // __syncthreads();
 
-    // gpu_RowMax(mij, sij, BR, BC);
+    /* gpu_RowMax(mij, sij, BR, BC) */
     mij[thd_i] = sij[thd_i * BC];
     for(int idx = 0; idx < BC; ++idx) {
         mij[thd_i] = max(mij[thd_i], sij[thd_i * BC + idx]);
     }
-    __syncthreads();
+    // __syncthreads();
     
-    // gpu_MinusMaxAndExp(pij, sij, mij, BR, BC);
+    /* gpu_MinusMaxAndExp(pij, sij, mij, BR, BC) */
     pij[thd_i * BC + thd_j] = exp(sij[thd_i * BC + thd_j] - mij[thd_i]);
-    __syncthreads();
+    // __syncthreads();
 
-    // gpu_RowSum(lij, pij, BR, BC);
+    /* gpu_RowSum(lij, pij, BR, BC) */
     lij[thd_i] = 0.0F;
     for (int idx = 0; idx < BC; idx++) {
         lij[thd_i] += pij[thd_i * BC + idx];
     }
-    __syncthreads();
+    // __syncthreads();
 
-    // gpu_UpdateMiLiOi(mi, li, oi, oi_tmp, mij, lij, pij, vj, BR, BC, d);
+    /* gpu_UpdateMiLiOi(mi, li, oi, oi_tmp, mij, lij, pij, vj, BR, BC, d) */ 
     __shared__ float mi_new[BR];
     __shared__ float li_new[BR];
 
@@ -280,7 +273,7 @@ __global__ void gpu_flash_attn(float *l, float *m, int N, int d,
     float coeff_old = exp(mi[thd_i] - mi_new[thd_i]);
     float coeff_cur = exp(mij[thd_i] - mi_new[thd_i]);
     li_new[thd_i] = coeff_old * li[thd_i] + coeff_cur * lij[thd_i];
-    __syncthreads();
+    // __syncthreads();
 
     d_stride = d / BC;
     for(int idx = 0; idx < d_stride; ++idx) {

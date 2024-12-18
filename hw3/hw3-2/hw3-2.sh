@@ -1,6 +1,7 @@
 #!/bin/bash
 TESTCASES="p11k1"
 echo $TESTCASES
+module load nvhpc-nompi rocm
 make
 # ./hw3-2 testcases/${TESTCASES} ${TESTCASES}.out
 

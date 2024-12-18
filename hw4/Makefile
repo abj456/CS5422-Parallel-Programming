@@ -10,7 +10,7 @@ TARGETS = seq-attention seq-flashattention hw4
 all: $(TARGETS)
 
 clean:
-	rm -f $(TARGETS)
+	rm -f $(TARGETS) *.out
 
 .PHONY: all clean
 
@@ -23,4 +23,5 @@ seq-flashattention: seq-flashattention.c
 hw4: hw4.cu
 	$(NVCC) $(NVFLAGS) -o $@ $? $(LDFLAGS)
 
-
+diff: diff.cu
+	$(NVCC) $(NVFLAGS) -o $@ $? $(LDFLAGS)

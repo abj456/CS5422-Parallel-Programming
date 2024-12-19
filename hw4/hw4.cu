@@ -5,7 +5,7 @@
 #include <float.h>
 #include <sys/time.h>
 #include <cuda.h>
-#include <nvtx3/nvToolsExt.h>
+// #include <nvtx3/nvToolsExt.h>
 
 #define DEV_NO 0
 #define BlockFactor 32
@@ -33,6 +33,7 @@ __device__ void gpu_MinusMaxAndExp(float *out, float *in, float *mx, int br, int
 __device__ void gpu_RowSum(float *out, float *in, int br, int bc);
 __device__ void gpu_UpdateMiLiOi(float *mi, float *li, float *oi, float *oi_tmp, float *mij, float *lij, float *pij, float *vj, int br, int bc, int d);
 
+/* DEBUG FUNC */
 __global__ void gpu_checkQKVO(float *in, int B, int N, int d);
 void checkCPU_GPU(float *O_cpu, float *O_gpu, int _B, int _N, int _d, char *matrix_name);
 
@@ -50,7 +51,7 @@ float *Q_gpu, *K_gpu, *V_gpu, *O_gpu;
 float *l, *m;
 // float *O_tmp;
 
-/* FOR DEBUG */
+/* DEBUG ARRAY */
 // float *cpu_sij, *cpu_mij, *cpu_pij, *cpu_lij;
 // float *gpu_sij, *gpu_mij, *gpu_pij, *gpu_lij;
 // float *cuda_sij, *cuda_mij, *cuda_pij, *cuda_lij;
@@ -108,12 +109,12 @@ int main(int argc, char *argv[]) {
         cudaMemset(m, FLT_MIN, N * sizeof(float));
         
         for(int j = 0; j < tc; ++j)
-        gpu_flash_attn<<<blocksPerGrid, threadsPerBlock, sizeof_kj_vj_qi_oi>>>
-            (l, m, N, d, j,
-            Q_gpu + (i * N * d), 
-            K_gpu + (i * N * d), 
-            V_gpu + (i * N * d), 
-            O_gpu + (i * N * d)
+            gpu_flash_attn<<<blocksPerGrid, threadsPerBlock, sizeof_kj_vj_qi_oi>>>(
+                l, m, N, d, j,
+                Q_gpu + (i * N * d), 
+                K_gpu + (i * N * d), 
+                V_gpu + (i * N * d), 
+                O_gpu + (i * N * d)
             );
         
         // flash_attention(
@@ -222,17 +223,23 @@ __global__ void gpu_flash_attn(float *l, float *m, int N, int d, int j,
 
     // row = blockIdx.y * BR + thd_i;
     int row = blockIdx.y * BR + thd_i;
+    
     int d_stride = d / BR;
-
-    for(int idx = 0; idx < d_stride; ++idx) {
-        kj[thd_j * d + thd_i * d_stride + idx] = k[j * BC * d + thd_j * d + thd_i * d_stride + idx];
-        vj[thd_j * d + thd_i * d_stride + idx] = v[j * BC * d + thd_j * d + thd_i * d_stride + idx];
+    // for(int idx = 0; idx < d; ++idx) { // only parallelize N
+    //     kj[thd_j * d + idx] = k[j * BC * d + thd_j * d + idx];
+    //     vj[thd_j * d + idx] = v[j * BC * d + thd_j * d + idx];
+    // }
+    #pragma unroll
+    for(int idx = 0; idx < d_stride; ++idx) {    
+        kj[thd_j * d + idx * BR + thd_i] = k[j * BC * d + thd_j * d + idx * BR + thd_i];
+        vj[thd_j * d + idx * BR + thd_i] = v[j * BC * d + thd_j * d + idx * BR + thd_i];
     }
 
     d_stride = d / BC;
+    #pragma unroll
     for(int idx = 0; idx < d_stride; ++idx) {
-        qi[thd_i * d + thd_j * d_stride + idx] = q[row * d + thd_j * d_stride + idx];
-        oi[thd_i * d + thd_j * d_stride + idx] = o[row * d + thd_j * d_stride + idx];
+        qi[thd_i * d + idx * BC + thd_j] = q[row * d + idx * BC + thd_j];
+        oi[thd_i * d + idx * BC + thd_j] = o[row * d + idx * BC + thd_j];
     }
     li[thd_i] = l[row];
     mi[thd_i] = m[row];
@@ -276,17 +283,19 @@ __global__ void gpu_flash_attn(float *l, float *m, int N, int d, int j,
     // __syncthreads();
 
     d_stride = d / BC;
+    #pragma unroll
     for(int idx = 0; idx < d_stride; ++idx) {
         float pv = 0.0F;
         for(int t = 0; t < BC; ++t) {
-            pv += pij[thd_i * BC + t] * vj[t * d + thd_j * d_stride + idx];
+            pv += pij[thd_i * BC + t] * vj[t * d + idx * BC + thd_j];
         }
-        oi[thd_i * d + thd_j * d_stride + idx] = (li[thd_i] * coeff_old * oi[thd_i * d + thd_j * d_stride + idx] + coeff_cur * pv) / li_new[thd_i];
+        oi[thd_i * d + idx * BC + thd_j] = (li[thd_i] * coeff_old * oi[thd_i * d + idx * BC + thd_j] + coeff_cur * pv) / li_new[thd_i];
     }
     __syncthreads();
     
+    #pragma unroll
     for(int idx = 0; idx < d_stride; ++idx) {
-        o[row * d + thd_j * d_stride + idx] = oi[thd_i * d + thd_j * d_stride + idx];
+        o[row * d + idx * BC + thd_j] = oi[thd_i * d + idx * BC + thd_j];
     }
     l[row] = li_new[thd_i];
     m[row] = mi_new[thd_i];

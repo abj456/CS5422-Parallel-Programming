@@ -20,7 +20,7 @@ cudaDeviceProp prop;
 int n, m;
 int org_n;
 int *Dist_host;
-int ncpus;
+// int ncpus;
 size_t dist_size;
 
 void input(char* infile) {
@@ -116,14 +116,11 @@ __global__ void cal_phase1(int n, int *Dist, int B, int Round) {
     int global_j = Round * BF + thread_j;
 
     __shared__ int shared_block[BF][BF];
-    int global_idx0 = addr(n, global_i, global_j);
-    int global_idx1 = global_idx0 + HALF_BF * n;
-    int global_idx2 = global_idx0 + HALF_BF;
-    int global_idx3 = global_idx0 + HALF_BF * (n + 1);
-    shared_block[thread_i][thread_j] = Dist[global_idx0];
-    shared_block[thread_i + HALF_BF][thread_j] = Dist[global_idx1];
-    shared_block[thread_i][thread_j + HALF_BF] = Dist[global_idx2];
-    shared_block[thread_i + HALF_BF][thread_j + HALF_BF] = Dist[global_idx3];
+    int global_idx = addr(n, global_i, global_j);
+    shared_block[thread_i][thread_j] = Dist[global_idx];
+    shared_block[thread_i][thread_j + HALF_BF] = Dist[global_idx + HALF_BF];
+    shared_block[thread_i + HALF_BF][thread_j] = Dist[global_idx + HALF_BF * n];
+    shared_block[thread_i + HALF_BF][thread_j + HALF_BF] = Dist[global_idx + HALF_BF * (n + 1)];
     __syncthreads();
 
     /* no shared memory */
@@ -137,21 +134,21 @@ __global__ void cal_phase1(int n, int *Dist, int B, int Round) {
         shared_block[thread_i][thread_j] = min(shared_block[thread_i][thread_j], 
                                               (shared_block[thread_i][k] + shared_block[k][thread_j]));
         
-        shared_block[thread_i + HALF_BF][thread_j] = min(shared_block[thread_i + HALF_BF][thread_j],
-                                                        (shared_block[thread_i + HALF_BF][k] + shared_block[k][thread_j]));
-
         shared_block[thread_i][thread_j + HALF_BF] = min(shared_block[thread_i][thread_j + HALF_BF],
                                                         (shared_block[thread_i][k] + shared_block[k][thread_j + HALF_BF]));
+
+        shared_block[thread_i + HALF_BF][thread_j] = min(shared_block[thread_i + HALF_BF][thread_j],
+                                                        (shared_block[thread_i + HALF_BF][k] + shared_block[k][thread_j]));
 
         shared_block[thread_i + HALF_BF][thread_j + HALF_BF] = min(shared_block[thread_i + HALF_BF][thread_j + HALF_BF],
                                                                   (shared_block[thread_i + HALF_BF][k] + shared_block[k][thread_j + HALF_BF]));
         // __syncthreads();
     }
     
-    Dist[global_idx0] = shared_block[thread_i][thread_j];
-    Dist[global_idx1] = shared_block[thread_i + HALF_BF][thread_j];
-    Dist[global_idx2] = shared_block[thread_i][thread_j + HALF_BF];
-    Dist[global_idx3] = shared_block[thread_i + HALF_BF][thread_j + HALF_BF];
+    Dist[global_idx] = shared_block[thread_i][thread_j];
+    Dist[global_idx + HALF_BF] = shared_block[thread_i][thread_j + HALF_BF];
+    Dist[global_idx + HALF_BF * n] = shared_block[thread_i + HALF_BF][thread_j];
+    Dist[global_idx + HALF_BF * (n + 1)] = shared_block[thread_i + HALF_BF][thread_j + HALF_BF];
 }
 
 __global__ void cal_phase2(int n, int *Dist, int B, int Round) {
@@ -176,20 +173,20 @@ __global__ void cal_phase2(int n, int *Dist, int B, int Round) {
 
     int global_idx = addr(n, global_i, global_j);
     shared_pivot[thread_i][thread_j] = Dist[global_idx];
-    shared_pivot[thread_i + HALF_BF][thread_j] = Dist[global_idx + HALF_BF * n];
     shared_pivot[thread_i][thread_j + HALF_BF] = Dist[global_idx + HALF_BF];
+    shared_pivot[thread_i + HALF_BF][thread_j] = Dist[global_idx + HALF_BF * n];
     shared_pivot[thread_i + HALF_BF][thread_j + HALF_BF] = Dist[global_idx + HALF_BF * (n + 1)];
 
     int hz_idx = addr(n, hz_i, hz_j);
     shared_hz[thread_i][thread_j] = Dist[hz_idx];
-    shared_hz[thread_i + HALF_BF][thread_j] = Dist[hz_idx + HALF_BF * n];
     shared_hz[thread_i][thread_j + HALF_BF] = Dist[hz_idx + HALF_BF];
+    shared_hz[thread_i + HALF_BF][thread_j] = Dist[hz_idx + HALF_BF * n];
     shared_hz[thread_i + HALF_BF][thread_j + HALF_BF] = Dist[hz_idx + HALF_BF * (n + 1)];
 
     int vt_idx = addr(n, vt_i, vt_j);
     shared_vt[thread_i][thread_j] = Dist[vt_idx];
-    shared_vt[thread_i + HALF_BF][thread_j] = Dist[vt_idx + HALF_BF * n];
     shared_vt[thread_i][thread_j + HALF_BF] = Dist[vt_idx + HALF_BF];
+    shared_vt[thread_i + HALF_BF][thread_j] = Dist[vt_idx + HALF_BF * n];
     shared_vt[thread_i + HALF_BF][thread_j + HALF_BF] = Dist[vt_idx + HALF_BF * (n + 1)];
     
     __syncthreads();
@@ -206,32 +203,32 @@ __global__ void cal_phase2(int n, int *Dist, int B, int Round) {
     for(int k = 0; k < BF; ++k) {
         shared_hz[thread_i][thread_j] = min(shared_hz[thread_i][thread_j], 
                                             shared_pivot[thread_i][k] + shared_hz[k][thread_j]);
-        shared_hz[thread_i + HALF_BF][thread_j] = min(shared_hz[thread_i + HALF_BF][thread_j], 
-                                                      shared_pivot[thread_i + HALF_BF][k] + shared_hz[k][thread_j]);
         shared_hz[thread_i][thread_j + HALF_BF] = min(shared_hz[thread_i][thread_j + HALF_BF], 
                                                       shared_pivot[thread_i][k] + shared_hz[k][thread_j + HALF_BF]);
+        shared_hz[thread_i + HALF_BF][thread_j] = min(shared_hz[thread_i + HALF_BF][thread_j], 
+                                                      shared_pivot[thread_i + HALF_BF][k] + shared_hz[k][thread_j]);
         shared_hz[thread_i + HALF_BF][thread_j + HALF_BF] = min(shared_hz[thread_i + HALF_BF][thread_j + HALF_BF], 
                                                                 shared_pivot[thread_i + HALF_BF][k] + shared_hz[k][thread_j + HALF_BF]);
     
         shared_vt[thread_i][thread_j] = min(shared_vt[thread_i][thread_j],
                                             shared_vt[thread_i][k] + shared_pivot[k][thread_j]);
-        shared_vt[thread_i + HALF_BF][thread_j] = min(shared_vt[thread_i + HALF_BF][thread_j],
-                                                      shared_vt[thread_i + HALF_BF][k] + shared_pivot[k][thread_j]);
         shared_vt[thread_i][thread_j + HALF_BF] = min(shared_vt[thread_i][thread_j + HALF_BF],
                                                       shared_vt[thread_i][k] + shared_pivot[k][thread_j + HALF_BF]);
+        shared_vt[thread_i + HALF_BF][thread_j] = min(shared_vt[thread_i + HALF_BF][thread_j],
+                                                      shared_vt[thread_i + HALF_BF][k] + shared_pivot[k][thread_j]);
         shared_vt[thread_i + HALF_BF][thread_j + HALF_BF] = min(shared_vt[thread_i + HALF_BF][thread_j + HALF_BF],
                                                                 shared_vt[thread_i + HALF_BF][k] + shared_pivot[k][thread_j + HALF_BF]);
         // __syncthreads();
     }
     
     Dist[hz_idx] = shared_hz[thread_i][thread_j];
-    Dist[hz_idx + HALF_BF * n] = shared_hz[thread_i + HALF_BF][thread_j];
     Dist[hz_idx + HALF_BF] = shared_hz[thread_i][thread_j + HALF_BF];
+    Dist[hz_idx + HALF_BF * n] = shared_hz[thread_i + HALF_BF][thread_j];
     Dist[hz_idx + HALF_BF * (n + 1)] = shared_hz[thread_i + HALF_BF][thread_j + HALF_BF];
 
     Dist[vt_idx] = shared_vt[thread_i][thread_j];
-    Dist[vt_idx + HALF_BF * n] = shared_vt[thread_i + HALF_BF][thread_j];
     Dist[vt_idx + HALF_BF] = shared_vt[thread_i][thread_j + HALF_BF];
+    Dist[vt_idx + HALF_BF * n] = shared_vt[thread_i + HALF_BF][thread_j];
     Dist[vt_idx + HALF_BF * (n + 1)] = shared_vt[thread_i + HALF_BF][thread_j + HALF_BF];
 }
 
@@ -262,22 +259,22 @@ __global__ void cal_phase3(int n, int *Dist, int Round) {
 
     int block_idx = addr(n, block_i, block_j);
     block[thread_i][thread_j] = Dist[block_idx];
-    block[thread_i + HALF_BF][thread_j] = Dist[block_idx + HALF_BF * n];
     block[thread_i][thread_j + HALF_BF] = Dist[block_idx + HALF_BF];
+    block[thread_i + HALF_BF][thread_j] = Dist[block_idx + HALF_BF * n];
     block[thread_i + HALF_BF][thread_j + HALF_BF] = Dist[block_idx + HALF_BF * (n + 1)];
     
     // row changed, col fixed
     int vt_idx = addr(n, block_i, vt_j);
     vt[thread_i][thread_j] = Dist[vt_idx];
-    vt[thread_i + HALF_BF][thread_j] = Dist[vt_idx + HALF_BF * n];
     vt[thread_i][thread_j + HALF_BF] = Dist[vt_idx + HALF_BF];
+    vt[thread_i + HALF_BF][thread_j] = Dist[vt_idx + HALF_BF * n];
     vt[thread_i + HALF_BF][thread_j + HALF_BF] = Dist[vt_idx + HALF_BF * (n + 1)];
 
     // row fixed, col changed
     int hz_idx = addr(n, hz_i, block_j);
     hz[thread_i][thread_j] = Dist[hz_idx];
-    hz[thread_i + HALF_BF][thread_j] = Dist[hz_idx + HALF_BF * n];
     hz[thread_i][thread_j + HALF_BF] = Dist[hz_idx + HALF_BF];
+    hz[thread_i + HALF_BF][thread_j] = Dist[hz_idx + HALF_BF * n];
     hz[thread_i + HALF_BF][thread_j + HALF_BF] = Dist[hz_idx + HALF_BF * (n + 1)];
 
     __syncthreads();
@@ -294,11 +291,11 @@ __global__ void cal_phase3(int n, int *Dist, int Round) {
         block[thread_i][thread_j] = min(block[thread_i][thread_j], 
                                         vt[thread_i][k] + hz[k][thread_j]);
 
-        block[thread_i + HALF_BF][thread_j] = min(block[thread_i + HALF_BF][thread_j], 
-                                                  vt[thread_i + HALF_BF][k] + hz[k][thread_j]);
-
         block[thread_i][thread_j + HALF_BF] = min(block[thread_i][thread_j + HALF_BF], 
                                                   vt[thread_i][k] + hz[k][thread_j + HALF_BF]);
+
+        block[thread_i + HALF_BF][thread_j] = min(block[thread_i + HALF_BF][thread_j], 
+                                                  vt[thread_i + HALF_BF][k] + hz[k][thread_j]);
 
         block[thread_i + HALF_BF][thread_j + HALF_BF] = min(block[thread_i + HALF_BF][thread_j + HALF_BF], 
                                                             vt[thread_i + HALF_BF][k] + hz[k][thread_j + HALF_BF]);
@@ -306,8 +303,8 @@ __global__ void cal_phase3(int n, int *Dist, int Round) {
     }
 
     Dist[block_idx] = block[thread_i][thread_j];
-    Dist[block_idx + HALF_BF * n] = block[thread_i + HALF_BF][thread_j];
     Dist[block_idx + HALF_BF] = block[thread_i][thread_j + HALF_BF];
+    Dist[block_idx + HALF_BF * n] = block[thread_i + HALF_BF][thread_j];
     Dist[block_idx + HALF_BF * (n + 1)] = block[thread_i + HALF_BF][thread_j + HALF_BF];
 }
 
@@ -349,10 +346,10 @@ inline void block_FW(int n, int B, int *Dist) {
 int main(int argc, char* argv[]) {
     int B = BF;
     /* detect how many CPUs are available */
-    cpu_set_t cpu_set;
-    sched_getaffinity(0, sizeof(cpu_set), &cpu_set);
+    // cpu_set_t cpu_set;
+    // sched_getaffinity(0, sizeof(cpu_set), &cpu_set);
     // printf("%d cpus available\n", CPU_COUNT(&cpu_set));
-    int ncpus = CPU_COUNT(&cpu_set);
+    // int ncpus = CPU_COUNT(&cpu_set);
 
     cudaGetDeviceProperties(&prop, DEV_NO);
     // printf("maxThreasPerBlock = %d, sharedMemPerBlock = %d\n", prop.maxThreadsPerBlock, prop.sharedMemPerBlock);

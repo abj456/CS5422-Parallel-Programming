@@ -314,12 +314,12 @@ int main(int argc, char* argv[]) {
 
     cudaGetDeviceProperties(&prop, DEV_NO);
     // printf("maxThreasPerBlock = %d, sharedMemPerBlock = %d\n", prop.maxThreadsPerBlock, prop.sharedMemPerBlock);
-    double total_IO_time = 0.0;
+    // double total_IO_time = 0.0;
 
-    double before = getTimeStamp();
+    // double before = getTimeStamp();
     input(argv[1]);
-    double after = getTimeStamp();
-    total_IO_time += (after - before);
+    // double after = getTimeStamp();
+    // total_IO_time += (after - before);
     assert(Dist_host != nullptr);
 
     cudaHostRegister(Dist_host, dist_size, cudaHostRegisterDefault);
@@ -334,11 +334,11 @@ int main(int argc, char* argv[]) {
     
     cudaMemcpy(Dist_host, Dist_dev, dist_size, cudaMemcpyDeviceToHost);
 
-    before = getTimeStamp();
+    // before = getTimeStamp();
     output(argv[2]);
-    after = getTimeStamp();
-    total_IO_time += (after - before);
-    printf("total IO time: %lf\n", total_IO_time);
+    // after = getTimeStamp();
+    // total_IO_time += (after - before);
+    // printf("total IO time: %lf\n", total_IO_time);
 
     cudaFreeHost(Dist_host);
     cudaFree(Dist_dev);

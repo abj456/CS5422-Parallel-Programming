@@ -14,7 +14,11 @@ lab4/sobel
 seq
 hw3/hw3-1/hw3-1
 hw3/hw3-2/hw3-2
+hw3/hw3-2/hw3-2-amd
+hw3/hw3-2/hw3-2.hip
 hw3/hw3-3/hw3-3
+hw3/hw3-3/hw3-3-amd
+hw3/hw3-3/hw3-3.hip
 
 *.txt
 hw4/diff*

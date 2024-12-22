@@ -27,11 +27,11 @@ void MinusMaxAndExp(float *out, float *in, float *mx, int br, int bc);
 void RowSum(float *out, float *in, int br, int bc);
 void UpdateMiLiOi(float *mi, float *li, float *oi, float *mij, float *lij, float *pij, float *vj, int br, int bc);
 
-__device__ void gpu_QKDotAndScalar(float *out, float *q, float *k, int br, int bc, float scalar, int d);
-__device__ void gpu_RowMax(float *out, float *in, int br, int bc);
-__device__ void gpu_MinusMaxAndExp(float *out, float *in, float *mx, int br, int bc);
-__device__ void gpu_RowSum(float *out, float *in, int br, int bc);
-__device__ void gpu_UpdateMiLiOi(float *mi, float *li, float *oi, float *oi_tmp, float *mij, float *lij, float *pij, float *vj, int br, int bc, int d);
+// __device__ void gpu_QKDotAndScalar(float *out, float *q, float *k, int br, int bc, float scalar, int d);
+// __device__ void gpu_RowMax(float *out, float *in, int br, int bc);
+// __device__ void gpu_MinusMaxAndExp(float *out, float *in, float *mx, int br, int bc);
+// __device__ void gpu_RowSum(float *out, float *in, int br, int bc);
+// __device__ void gpu_UpdateMiLiOi(float *mi, float *li, float *oi, float *oi_tmp, float *mij, float *lij, float *pij, float *vj, int br, int bc, int d);
 
 /* DEBUG FUNC */
 __global__ void gpu_checkQKVO(float *in, int B, int N, int d);

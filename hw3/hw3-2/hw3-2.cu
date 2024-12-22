@@ -10,8 +10,8 @@ const int INF = ((1 << 30) - 1);
 //======================
 #define DEV_NO 0
 #define BF 64
-#define HALF_BF 32
-#define NUM_THREADS 32
+#define HALF_BF (BF / 2)
+#define NUM_THREADS HALF_BF
 #define STRINGIFY(x) #x
 #define PRAGMA_UNROLL(x) _Pragma(STRINGIFY(unroll x))
 #define addr(V, i, j) ((i) * V + (j))

@@ -1,18 +1,20 @@
 #!/bin/bash
-TESTCASES="p24k1"
+TESTCASES=$1
 echo $TESTCASES
 module load nvhpc-nompi rocm
 make
-srun -p nvidia -N1 -n1 --gres=gpu:1 nvprof \
-    --metrics gst_throughput \
-    ./hw3-2 testcases/${TESTCASES} ${TESTCASES}.out
-    # --metrics achieved_occupancy \
-    # --metrics sm_efficiency \
-    # --metrics shared_load_throughput \
-    # --metrics shared_store_throughput \
-    # --metrics gld_throughput \
-    # --metrics gst_throughput \
+# METRICS_ARR=("achieved_occupancy" "sm_efficiency" \
+#              "shared_load_throughput" "shared_store_throughput" \
+#              "gld_throughput" "gst_throughput")
+METRICS_ARR=("inst_integer")
 
+for METRIC in ${METRICS_ARR[@]}
+do
+    echo $METRIC
+    srun -p nvidia -N1 -n1 --gres=gpu:1 nvprof \
+        --metrics ${METRIC} \
+        ./hw3-2 testcases/${TESTCASES} ${TESTCASES}.out
+done
 # mkdir -p nsys_reports
 # nsys profile \
 #     -o "./nsys_reports/wewe_phase3.nsys-rep" \

@@ -5,7 +5,6 @@
 #include <float.h>
 #include <sys/time.h>
 #include <cuda.h>
-// #include <nvtx3/nvToolsExt.h>
 
 #define DEV_NO 0
 #define BlockFactor 32
@@ -71,7 +70,7 @@ int main(int argc, char *argv[]) {
     cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, DEV_NO);
     // printf("testcase: %s\n", argv[1]);
-    // printf("maxThreasPerBlock = %d, sharedMemPerBlock = %lu\n", prop.maxThreadsPerBlock, prop.sharedMemPerBlock);
+    printf("maxThreasPerBlock = %d, sharedMemPerBlock = %lu\n", prop.maxThreadsPerBlock, prop.sharedMemPerBlock);
     // printf("maxBlocksPerMultiProcessor = %d, totalGlobalMem = %lu\n", prop.maxBlocksPerMultiProcessor, prop.totalGlobalMem);
 
 
@@ -79,7 +78,7 @@ int main(int argc, char *argv[]) {
     size_t QKVO_size = B * N * d * sizeof(float);
     // printf("size of malloc = %lu\n", sizeof(float) * (BlockFactor * d * 4 + BlockFactor * 4 + BlockFactor * BlockFactor * 2));
     // printf("size of GlobalMem = %lu\n", QKVO_size * 4);
-    // printf("(B, N, d): (%d, %d, %d)\n", B, N, d);
+    printf("(B, N, d): (%d, %d, %d)\n", B, N, d);
 
     cudaMalloc(&Q_gpu, QKVO_size);
     cudaMalloc(&K_gpu, QKVO_size);
@@ -98,8 +97,8 @@ int main(int argc, char *argv[]) {
     dim3 blocksPerGrid(1, tr);
     dim3 threadsPerBlock(bc, br);
     size_t sizeof_kj_vj_qi_oi = (bc * d * 2 + br * d * 2) * sizeof(float);
-    // printf("size of kj_vj_qi_oi_oitmp = %lu\n", sizeof_kj_vj_qi_oi);
-    // printf("size of static shared mem = %lu\n", sizeof(float) * (BR * 6 + BR * BC * 2));
+    printf("size of kj_vj_qi_oi_oitmp = %lu\n", sizeof_kj_vj_qi_oi);
+    printf("size of static shared mem = %lu\n", sizeof(float) * (BR * 6 + BR * BC * 2));
 
     double start, end;
     start = getTimeStamp();
@@ -291,7 +290,7 @@ __global__ void gpu_flash_attn(float *l, float *m, int N, int d, int j,
         }
         oi[thd_i * d + idx * BC + thd_j] = (li[thd_i] * coeff_old * oi[thd_i * d + idx * BC + thd_j] + coeff_cur * pv) / li_new[thd_i];
     }
-    __syncthreads();
+    // __syncthreads();
     
     #pragma unroll
     for(int idx = 0; idx < d_stride; ++idx) {
